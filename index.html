@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lunch Wheel 🍽️</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+    <header>
+        <h1>🍽️ Lunch Wheel</h1>
+        <button id="spinBtn" class="spin-btn">Spin!</button>
+    </header>
+
+    <div class="wheel-container">
+        <div class="pointer">▼</div>
+        <div class="wheel" id="wheel">
+            <!-- Generated dynamically by JS -->
+        </div>
+    </div>
+
+    <div id="result-popover" popover>
+        <h2>🎉 Today's Lunch Spot</h2>
+        <p id="result-text" class="result-text"></p>
+        <p class="result-subtitle">Enjoy your meal!</p>
+        <button popovertarget="result-popover" popovertargetaction="hide">
+            Got it!
+        </button>
+    </div>
+
+    <aside class="history-panel">
+        <details>
+            <summary>📅 History</summary>
+            <ul id="history-list"></ul>
+        </details>
+    </aside>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="app.js"></script>
+</body>
+
+</html>
