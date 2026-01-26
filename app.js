@@ -9,39 +9,39 @@ const SUPABASE_ANON_KEY =
 // Campus lunch spots from Pocket Guide 2025
 // Each spot has a name and location
 const LUNCH_SPOTS = [
-  { name: 'Garden', location: 'The Commons' },
-  { name: 'Himalaya', location: 'The Commons' },
-  { name: 'Global', location: 'The Commons' },
-  { name: 'Forage', location: 'The Commons' },
-  { name: 'Roost', location: 'The Commons' },
-  { name: 'Cuatro', location: 'The Commons' },
-  { name: 'Diner', location: 'The Commons' },
-  { name: 'Parlor', location: 'The Commons' },
-  { name: 'Delicatessen', location: 'Building 4' },
-  { name: 'Eat Local', location: 'Building 4' },
-  { name: "Jack's BBQ", location: 'Building 4' },
-  { name: "Joe's Burgers", location: 'Building 4' },
-  { name: 'Just Poké', location: 'Building 4' },
-  { name: 'Paparepas', location: 'Building 4' },
-  { name: 'MiLá', location: 'Building 4' },
-  { name: 'Craft75', location: 'Building 4' },
-  { name: 'Pranzetto', location: 'Building 4' },
-  { name: 'Grilled', location: 'Building 4' },
-  { name: 'Mediterranean', location: 'Building 4' },
-  { name: 'Street Food', location: 'Building 4' },
-  { name: 'World Flavors', location: 'Building 4' },
-  { name: 'Sprout', location: 'Building 4' },
-  { name: 'OmaBap', location: 'Building 4' },
-  { name: 'Flora', location: 'Building 4' },
-  { name: "L'Experience", location: 'Building 33' },
-  { name: 'Cone & Steiner', location: 'Building 33' },
-  { name: 'Soul Pie', location: 'Building 33' },
-  { name: 'Internationalist', location: 'Building 33' },
-  { name: 'PNW', location: 'Building 33' },
-  { name: 'Sea', location: 'Building 33' },
-  { name: 'Pacific Rim', location: 'Building 33' },
-  { name: 'Leaf + Land', location: 'Building 33' },
-  { name: 'Big Chicken', location: 'Building 33' },
+  { name: 'Himalaya', location: 'Food Hall 4' },
+  { name: 'Global', location: 'Food Hall 4' },
+  { name: 'Forage', location: 'Food Hall 4' },
+  { name: 'Roost', location: 'Food Hall 4' },
+  { name: 'Cuatro', location: 'Food Hall 4' },
+  { name: 'Parlor', location: 'Food Hall 4' },
+  { name: 'Delicatessen', location: 'Food Hall 4' },
+  { name: 'Eat Local (4)', location: 'Food Hall 4' },
+  { name: "Jack's BBQ", location: 'Food Hall 4' },
+  { name: "Joe's Burgers", location: 'Food Hall 4' },
+  { name: 'Just Poké', location: 'Food Hall 4' },
+  { name: 'Paparepas', location: 'Food Hall 4' },
+  { name: 'MiLá', location: 'Food Hall 4' },
+  { name: 'Craft75', location: 'Food Hall 6' },
+  { name: 'Pranzetto', location: 'Food Hall 6' },
+  { name: 'Eat Local (6)', location: 'Food Hall 6' },
+  { name: 'Grilled', location: 'Food Hall 6' },
+  { name: 'Mediterranean', location: 'Food Hall 6' },
+  { name: 'Street Food', location: 'Food Hall 6' },
+  { name: 'World Flavors', location: 'Food Hall 6' },
+  { name: 'Sprout', location: 'Food Hall 6' },
+  { name: 'OmaBap', location: 'Food Hall 6' },
+  { name: 'Flora', location: 'Food Hall 6' },
+  { name: 'Cone & Steiner', location: 'Building 8' },
+  { name: 'Diner', location: 'Food Hall 9' },
+  { name: 'Soul Pie', location: 'Food Hall 9' },
+  { name: 'Internationalist', location: 'Food Hall 9' },
+  { name: 'PNW', location: 'Food Hall 9' },
+  { name: 'Garden', location: 'Food Hall 9' },
+  { name: 'Sea', location: 'Food Hall 9' },
+  { name: 'Pacific Rim', location: 'Food Hall 9' },
+  { name: 'Leaf + Land', location: 'Food Hall 9' },
+  { name: 'Big Chicken', location: 'Food Hall 9' },
 ];
 
 // ============================================
@@ -59,6 +59,7 @@ try {
 }
 
 const wheel = document.getElementById('wheel');
+const wheelContainer = document.querySelector('.wheel-container');
 const spinBtn = document.getElementById('spinBtn');
 const resultText = document.getElementById('result-text');
 const historyList = document.getElementById('history-list');
@@ -113,16 +114,25 @@ function buildWheel() {
   }
   wheel.style.background = `conic-gradient(from -90deg, ${gradientStops.join(', ')})`;
 
-  // Calculate font size based on number of segments - as large as possible
-  // More segments = smaller font, fewer = larger
-  const fontSize =
-    numSegments > 35
-      ? '0.5rem'
-      : numSegments > 25
-        ? '0.65rem'
-        : numSegments > 15
-          ? '0.8rem'
-          : '1rem';
+  // Calculate font size based on wheel size + number of segments,
+  // then cap it to the available segment width at the chosen label radius.
+  const wheelSize = wheel.getBoundingClientRect().width || 600;
+
+  // Push labels away from center circle but keep them inside the rim.
+  const minRadius = 55; // center circle (~30px radius) + padding
+  const maxRadius = Math.max(minRadius + 10, wheelSize / 2 - 26);
+  const preferredRadius = wheelSize * 0.34;
+  const labelRadius = Math.max(minRadius, Math.min(preferredRadius, maxRadius));
+
+  // Segment width (arc length) at the label radius; use ~80% to avoid overlap.
+  const segmentWidthAtRadius = (2 * Math.PI * labelRadius * segmentAngle) / 360;
+  const maxFontPx = Math.max(10, Math.floor(segmentWidthAtRadius * 0.8));
+
+  const desiredBasePx =
+    numSegments > 35 ? 13 : numSegments > 25 ? 16 : numSegments > 15 ? 19 : 24;
+  const scale = Math.max(1.0, Math.min(wheelSize / 600, 1.7));
+  const desiredFontPx = Math.round(desiredBasePx * scale);
+  const fontSize = `${Math.min(desiredFontPx, maxFontPx)}px`;
 
   // Add text labels - segment i spans from i*segmentAngle to (i+1)*segmentAngle
   // Center of segment i is at i*segmentAngle + segmentAngle/2, offset by -90 for top start
@@ -134,10 +144,35 @@ function buildWheel() {
     const textColor = lightColors.includes(color) ? '#000' : '#fff';
     const spot = LUNCH_SPOTS[i];
     const tooltip = `${spot.name} — ${spot.location}`;
-    labelsHTML += `<div class="segment-label" style="transform: rotate(${labelAngle}deg); color: ${textColor}; font-size: ${fontSize};" title="${tooltip}"><span>${spot.name}</span></div>`;
+    labelsHTML += `<div class="segment-label" style="--label-angle: ${labelAngle}deg; --label-radius: ${labelRadius}px; color: ${textColor}; font-size: ${fontSize};" title="${tooltip}"><span>${spot.name}</span></div>`;
   }
   wheel.innerHTML = labelsHTML;
   console.log('Wheel built with', numSegments, 'segments');
+}
+
+function sizeWheelToContainer() {
+  if (!wheel || !wheelContainer) return;
+
+  const styles = window.getComputedStyle(wheelContainer);
+  const paddingX =
+    parseFloat(styles.paddingLeft) + parseFloat(styles.paddingRight);
+  const paddingY =
+    parseFloat(styles.paddingTop) + parseFloat(styles.paddingBottom);
+
+  const availableWidth = wheelContainer.clientWidth - paddingX;
+  const availableHeight = wheelContainer.clientHeight - paddingY;
+  const margin = 8;
+
+  const wheelSize = Math.max(
+    240,
+    Math.floor(Math.min(availableWidth, availableHeight) - margin * 2),
+  );
+
+  wheel.style.width = `${wheelSize}px`;
+  wheel.style.height = `${wheelSize}px`;
+  wheelContainer.style.setProperty('--wheel-size', `${wheelSize}px`);
+
+  return wheelSize;
 }
 
 // Get available spots (excluding yesterday's pick)
@@ -372,8 +407,18 @@ function setupDragGesture() {
 
 // Initialize app
 async function init() {
-  // Build the wheel dynamically
+  // Size & build the wheel dynamically
+  sizeWheelToContainer();
   buildWheel();
+
+  let resizeTimer;
+  window.addEventListener('resize', () => {
+    window.clearTimeout(resizeTimer);
+    resizeTimer = window.setTimeout(() => {
+      sizeWheelToContainer();
+      buildWheel();
+    }, 100);
+  });
 
   // Attach click handler immediately
   spinBtn.addEventListener('click', handleSpin);

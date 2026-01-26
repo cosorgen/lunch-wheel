@@ -72,12 +72,12 @@ header h1 {
     align-items: center;
     justify-content: center;
     position: relative;
-    padding: 2rem;
+    padding: clamp(12px, 2vw, 24px);
 }
 
 .wheel {
-    width: min(80vw, 80vh, 600px);
-    height: min(80vw, 80vh, 600px);
+    width: min(92vmin, 900px);
+    height: min(92vmin, 900px);
     border-radius: 50%;
     border: 4px solid var(--wheel-border);
     position: relative;
@@ -94,10 +94,10 @@ header h1 {
 
 .pointer {
     position: absolute;
-    top: calc(50% - min(40vw, 40vh, 300px) - 25px);
+    top: calc(50% - (var(--wheel-size, 92vmin) / 2) - 18px);
     left: 50%;
     transform: translateX(-50%);
-    font-size: 2.5rem;
+    font-size: clamp(2rem, 4vw, 3rem);
     color: var(--accent);
     z-index: 10;
     filter: drop-shadow(0 2px 4px var(--shadow));
@@ -105,23 +105,28 @@ header h1 {
 
 .segment-label {
     position: absolute;
-    width: 42%;
-    height: 0;
     left: 50%;
     top: 50%;
-    transform-origin: left center;
-    font-size: 0.8rem;
+    width: 0;
+    height: 0;
+    transform: translate(-50%, -50%) rotate(var(--label-angle, 0deg)) translateX(var(--label-radius, calc(var(--wheel-size, 600px) * 0.35)));
+    transform-origin: center;
     font-weight: 700;
     pointer-events: auto;
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    padding-right: 4px;
     cursor: default;
 }
 
 .segment-label span {
+    position: absolute;
+    left: 0;
+    top: 0;
+    display: block;
+    transform: translate(-50%, -50%);
     white-space: nowrap;
+    text-align: center;
+    max-width: min(55vw, 520px);
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 /* Center circle */
