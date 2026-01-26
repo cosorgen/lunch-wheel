@@ -10,7 +10,16 @@
 
 <body>
     <header>
-        <h1>🍽️ Lunch Wheel</h1>
+        <div class="header-left">
+            <h1>🍽️ Lunch Wheel</h1>
+            <div class="group-controls">
+                <label class="sr-only" for="groupSelect">Group</label>
+                <select id="groupSelect" aria-label="Group"></select>
+                <button id="manageGroupBtn" class="secondary-btn" popovertarget="group-popover">
+                    Groups &amp; Spots
+                </button>
+            </div>
+        </div>
         <button id="spinBtn" class="spin-btn">Spin!</button>
     </header>
 
@@ -28,6 +37,32 @@
         <button popovertarget="result-popover" popovertargetaction="hide">
             Got it!
         </button>
+    </div>
+
+    <div id="group-popover" popover>
+        <h2>👥 Groups &amp; Spots</h2>
+
+        <div class="form-row">
+            <input id="newGroupName" type="text" placeholder="New group name" autocomplete="off" />
+            <button id="createGroupBtn" class="secondary-btn">Create</button>
+        </div>
+
+        <hr class="divider" />
+
+        <h3 class="popover-subtitle">Lunch spots for <span id="currentGroupLabel"></span></h3>
+
+        <div class="form-row">
+            <input id="newSpotName" type="text" placeholder="Spot name" autocomplete="off" />
+            <input id="newSpotLocation" type="text" placeholder="Location (optional)" autocomplete="off" />
+            <button id="addSpotBtn" class="secondary-btn">Add</button>
+        </div>
+
+        <ul id="spots-list" class="spots-list"></ul>
+
+        <div class="form-row form-row-end">
+            <button id="resetSpotsBtn" class="danger-btn">Reset to default</button>
+            <button class="secondary-btn" popovertarget="group-popover" popovertargetaction="hide">Done</button>
+        </div>
     </div>
 
     <aside class="history-panel">

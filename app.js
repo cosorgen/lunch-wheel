@@ -8,7 +8,7 @@ const SUPABASE_ANON_KEY =
 
 // Campus lunch spots from Pocket Guide 2025
 // Each spot has a name and location
-const LUNCH_SPOTS = [
+const DEFAULT_LUNCH_SPOTS = [
   { name: 'Himalaya', location: 'Food Hall 4' },
   { name: 'Global', location: 'Food Hall 4' },
   { name: 'Forage', location: 'Food Hall 4' },
@@ -65,16 +65,141 @@ const resultText = document.getElementById('result-text');
 const historyList = document.getElementById('history-list');
 const resultPopover = document.getElementById('result-popover');
 
+// Group UI
+const groupSelect = document.getElementById('groupSelect');
+const currentGroupLabel = document.getElementById('currentGroupLabel');
+const newGroupNameInput = document.getElementById('newGroupName');
+const createGroupBtn = document.getElementById('createGroupBtn');
+const newSpotNameInput = document.getElementById('newSpotName');
+const newSpotLocationInput = document.getElementById('newSpotLocation');
+const addSpotBtn = document.getElementById('addSpotBtn');
+const spotsList = document.getElementById('spots-list');
+const resetSpotsBtn = document.getElementById('resetSpotsBtn');
+
 let currentRotation = 0;
 let todaysPick = null;
 let yesterdaysPick = null;
 
+let selectedGroup = null;
+let activeLunchSpots = [];
+let supabaseGroupModeAvailable = true;
+
 // Get today's date as YYYY-MM-DD
 const getToday = () => new Date().toISOString().split('T')[0];
 
+const STORAGE_PREFIX = 'lunchWheel.';
+const storageKey = (suffix) => `${STORAGE_PREFIX}${suffix}`;
+
+function safeTrim(str) {
+  return (str ?? '').toString().trim();
+}
+
+function loadJSON(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return fallback;
+    return JSON.parse(raw);
+  } catch {
+    return fallback;
+  }
+}
+
+function saveJSON(key, value) {
+  localStorage.setItem(key, JSON.stringify(value));
+}
+
+function normalizeGroupName(name) {
+  return safeTrim(name).replace(/\s+/g, ' ');
+}
+
+function getGroups() {
+  const groups = loadJSON(storageKey('groups'), ['Edge design']);
+  const normalized = [
+    ...new Set(groups.map(normalizeGroupName).filter(Boolean)),
+  ];
+  return normalized.length ? normalized : ['Edge design'];
+}
+
+function persistGroups(groups) {
+  saveJSON(storageKey('groups'), groups);
+}
+
+function getSelectedGroup() {
+  const fromStorage = normalizeGroupName(
+    loadJSON(storageKey('selectedGroup'), ''),
+  );
+  const groups = getGroups();
+  if (fromStorage && groups.includes(fromStorage)) return fromStorage;
+  return groups[0];
+}
+
+function setSelectedGroup(groupName) {
+  selectedGroup = groupName;
+  saveJSON(storageKey('selectedGroup'), groupName);
+  if (currentGroupLabel) currentGroupLabel.textContent = groupName;
+}
+
+function getGroupSpotsKey(groupName) {
+  return storageKey(`spots.${groupName}`);
+}
+
+function getGroupHistoryKey(groupName) {
+  return storageKey(`history.${groupName}`);
+}
+
+function getSpotsForGroup(groupName) {
+  const custom = loadJSON(getGroupSpotsKey(groupName), null);
+  if (Array.isArray(custom) && custom.length) {
+    return custom
+      .map((s) => ({
+        name: safeTrim(s?.name),
+        location: safeTrim(s?.location),
+      }))
+      .filter((s) => s.name);
+  }
+  return DEFAULT_LUNCH_SPOTS;
+}
+
+function setSpotsForGroup(groupName, spots) {
+  const cleaned = (spots || [])
+    .map((s) => ({ name: safeTrim(s?.name), location: safeTrim(s?.location) }))
+    .filter((s) => s.name);
+  saveJSON(getGroupSpotsKey(groupName), cleaned);
+}
+
+function resetSpotsForGroup(groupName) {
+  localStorage.removeItem(getGroupSpotsKey(groupName));
+}
+
+function readLocalHistory(groupName) {
+  const history = loadJSON(getGroupHistoryKey(groupName), []);
+  if (!Array.isArray(history)) return [];
+  return history
+    .filter((h) => h && h.pick_date && h.spot_name)
+    .sort((a, b) =>
+      a.pick_date < b.pick_date ? 1 : a.pick_date > b.pick_date ? -1 : 0,
+    )
+    .slice(0, 7);
+}
+
+function writeLocalPick(groupName, pickDate, spotName) {
+  const history = loadJSON(getGroupHistoryKey(groupName), []);
+  const next = Array.isArray(history) ? [...history] : [];
+  const existingIndex = next.findIndex((h) => h.pick_date === pickDate);
+  const entry = { pick_date: pickDate, spot_name: spotName };
+  if (existingIndex >= 0) next[existingIndex] = entry;
+  else next.push(entry);
+  saveJSON(getGroupHistoryKey(groupName), next);
+}
+
+function isMissingColumnError(error, columnName) {
+  const msg = `${error?.message || ''} ${error?.details || ''}`.toLowerCase();
+  return msg.includes('column') && msg.includes(columnName.toLowerCase());
+}
+
 // Build the wheel segments
 function buildWheel() {
-  const numSegments = LUNCH_SPOTS.length;
+  const numSegments = activeLunchSpots.length;
   const segmentAngle = 360 / numSegments;
 
   // Color palette - will cycle through for any number of segments
@@ -142,7 +267,7 @@ function buildWheel() {
     const labelAngle = segmentCenter - 90;
     const color = colors[i % colors.length];
     const textColor = lightColors.includes(color) ? '#000' : '#fff';
-    const spot = LUNCH_SPOTS[i];
+    const spot = activeLunchSpots[i];
     const tooltip = `${spot.name} — ${spot.location}`;
     labelsHTML += `<div class="segment-label" style="--label-angle: ${labelAngle}deg; --label-radius: ${labelRadius}px; color: ${textColor}; font-size: ${fontSize};" title="${tooltip}"><span>${spot.name}</span></div>`;
   }
@@ -177,14 +302,17 @@ function sizeWheelToContainer() {
 
 // Get available spots (excluding yesterday's pick)
 function getAvailableSpots() {
-  if (!yesterdaysPick) return LUNCH_SPOTS;
-  return LUNCH_SPOTS.filter((spot) => spot.name !== yesterdaysPick);
+  if (!Array.isArray(activeLunchSpots) || activeLunchSpots.length === 0) {
+    return [];
+  }
+  if (!yesterdaysPick) return activeLunchSpots;
+  return activeLunchSpots.filter((spot) => spot.name !== yesterdaysPick);
 }
 
 // Spin the wheel to a specific spot
 function spinToSpot(spot) {
-  const spotIndex = LUNCH_SPOTS.findIndex((s) => s.name === spot.name);
-  const segmentAngle = 360 / LUNCH_SPOTS.length;
+  const spotIndex = activeLunchSpots.findIndex((s) => s.name === spot.name);
+  const segmentAngle = 360 / activeLunchSpots.length;
 
   // Calculate target angle (spot should be at top, under pointer)
   const targetAngle = -(spotIndex * segmentAngle);
@@ -201,31 +329,62 @@ function spinToSpot(spot) {
   return new Promise((resolve) => setTimeout(resolve, 4000));
 }
 
-// Load history from Supabase
-async function loadHistory() {
+// Load history (Supabase if available + schema supports groups, else local)
+async function loadHistory(groupName) {
+  if (!supabaseClient || !supabaseGroupModeAvailable) {
+    return readLocalHistory(groupName);
+  }
+
   const { data, error } = await supabaseClient
     .from('lunch_picks')
     .select('*')
+    .eq('group_name', groupName)
     .order('pick_date', { ascending: false })
     .limit(7);
 
   if (error) {
+    if (isMissingColumnError(error, 'group_name')) {
+      console.warn(
+        'Supabase table is missing group_name. Falling back to local storage. See README for migration SQL.',
+      );
+      supabaseGroupModeAvailable = false;
+      return readLocalHistory(groupName);
+    }
+
     console.error('Error loading history:', error);
-    return [];
+    return readLocalHistory(groupName);
   }
 
   return data || [];
 }
 
-// Save pick to Supabase
-async function savePick(spot) {
-  const { error } = await supabaseClient
-    .from('lunch_picks')
-    .insert({ pick_date: getToday(), spot_name: spot });
+// Save pick (Supabase if available + schema supports groups, else local)
+async function savePick(groupName, spotName) {
+  const pickDate = getToday();
+
+  if (!supabaseClient || !supabaseGroupModeAvailable) {
+    writeLocalPick(groupName, pickDate, spotName);
+    return;
+  }
+
+  const { error } = await supabaseClient.from('lunch_picks').insert({
+    group_name: groupName,
+    pick_date: pickDate,
+    spot_name: spotName,
+  });
 
   if (error) {
+    if (isMissingColumnError(error, 'group_name')) {
+      console.warn(
+        'Supabase table is missing group_name. Falling back to local storage. See README for migration SQL.',
+      );
+      supabaseGroupModeAvailable = false;
+      writeLocalPick(groupName, pickDate, spotName);
+      return;
+    }
+
     console.error('Error saving pick:', error);
-    throw error;
+    writeLocalPick(groupName, pickDate, spotName);
   }
 }
 
@@ -242,8 +401,8 @@ function renderHistory(history) {
     .map(
       (pick) => `
         <li>
-            <span class="spot">${pick.spot_name}${pick.pick_date === today ? '<span class="today">TODAY</span>' : ''}</span>
-            <span class="date">${formatDate(pick.pick_date)}</span>
+            <span class="spot">${pick.spot_name}</span>
+            <span class="date ${pick.pick_date === today ? 'today' : ''}">${formatDate(pick.pick_date)}</span>
         </li>
     `,
     )
@@ -296,6 +455,13 @@ function disableWheel() {
   wheel.classList.add('disabled');
 }
 
+function enableWheel() {
+  spinBtn.disabled = false;
+  spinBtn.textContent = 'Spin!';
+  wheel.classList.remove('disabled');
+  wheel.style.cursor = 'grab';
+}
+
 // Show today's result
 function showResult(spot) {
   if (typeof spot === 'string') {
@@ -319,6 +485,11 @@ async function handleSpin() {
 
   // Pick a random spot from available options
   const available = getAvailableSpots();
+  if (!available.length) {
+    console.warn('No available spots to pick from');
+    enableWheel();
+    return;
+  }
   const picked = available[Math.floor(Math.random() * available.length)];
   console.log('Picked:', picked.name);
 
@@ -333,11 +504,9 @@ async function handleSpin() {
 
   // Save to database (don't block on this)
   try {
-    if (supabaseClient) {
-      await savePick(picked.name);
-      const history = await loadHistory();
-      renderHistory(history);
-    }
+    await savePick(selectedGroup, picked.name);
+    const history = await loadHistory(selectedGroup);
+    renderHistory(history);
   } catch (err) {
     console.error('Failed to save pick:', err);
   }
@@ -405,11 +574,159 @@ function setupDragGesture() {
   document.addEventListener('touchend', handleDragEnd);
 }
 
+function renderSpotsManager() {
+  if (!spotsList) return;
+  const spots = getSpotsForGroup(selectedGroup);
+  spotsList.innerHTML = spots
+    .map((spot, index) => {
+      const location = safeTrim(spot.location);
+      return `
+      <li>
+        <div class="spot-meta">
+          <div class="name">${spot.name}</div>
+          ${location ? `<div class="location">${location}</div>` : ''}
+        </div>
+        <button class="remove-btn" data-index="${index}" aria-label="Remove">Remove</button>
+      </li>
+    `;
+    })
+    .join('');
+
+  spotsList.querySelectorAll('button.remove-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const idx = Number(btn.getAttribute('data-index'));
+      const next = spots.filter((_, i) => i !== idx);
+      setSpotsForGroup(selectedGroup, next);
+      applyGroupContext();
+    });
+  });
+}
+
+function rebuildGroupSelect() {
+  if (!groupSelect) return;
+
+  const groups = getGroups();
+  groupSelect.innerHTML = groups
+    .map((g) => `<option value="${g}">${g}</option>`)
+    .join('');
+
+  const current = getSelectedGroup();
+  groupSelect.value = current;
+}
+
+async function applyGroupContext() {
+  if (!selectedGroup) return;
+
+  todaysPick = null;
+  yesterdaysPick = null;
+  currentRotation = 0;
+
+  activeLunchSpots = getSpotsForGroup(selectedGroup);
+  if (!activeLunchSpots.length) {
+    activeLunchSpots = DEFAULT_LUNCH_SPOTS;
+  }
+  sizeWheelToContainer();
+  buildWheel();
+  renderSpotsManager();
+
+  try {
+    const history = await loadHistory(selectedGroup);
+    renderHistory(history);
+
+    yesterdaysPick = getYesterdaysPick(history);
+    const alreadySpun = await checkTodaysPick(history);
+
+    if (alreadySpun) {
+      disableWheel();
+      wheel.style.cursor = 'not-allowed';
+      const spotIndex = activeLunchSpots.findIndex(
+        (s) => s.name === todaysPick,
+      );
+      if (spotIndex >= 0) {
+        const segmentAngle = 360 / activeLunchSpots.length;
+        wheel.style.transition = 'none';
+        wheel.style.transform = `rotate(${-(spotIndex * segmentAngle)}deg)`;
+      }
+    } else {
+      enableWheel();
+      wheel.style.transition = 'none';
+      wheel.style.transform = 'rotate(0deg)';
+    }
+  } catch (err) {
+    console.error('Failed to apply group context:', err);
+  }
+}
+
+function setupGroupUi() {
+  rebuildGroupSelect();
+
+  const initial = getSelectedGroup();
+  setSelectedGroup(initial);
+
+  if (groupSelect) {
+    groupSelect.addEventListener('change', async () => {
+      const next = normalizeGroupName(groupSelect.value);
+      if (!next) return;
+      setSelectedGroup(next);
+      await applyGroupContext();
+    });
+  }
+
+  if (createGroupBtn && newGroupNameInput) {
+    createGroupBtn.addEventListener('click', async () => {
+      const name = normalizeGroupName(newGroupNameInput.value);
+      if (!name) return;
+
+      const groups = getGroups();
+      if (!groups.includes(name)) {
+        groups.push(name);
+        persistGroups(groups);
+      }
+
+      rebuildGroupSelect();
+      groupSelect.value = name;
+      newGroupNameInput.value = '';
+      setSelectedGroup(name);
+      await applyGroupContext();
+    });
+
+    newGroupNameInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') createGroupBtn.click();
+    });
+  }
+
+  if (addSpotBtn && newSpotNameInput && newSpotLocationInput) {
+    addSpotBtn.addEventListener('click', () => {
+      const name = safeTrim(newSpotNameInput.value);
+      const location = safeTrim(newSpotLocationInput.value);
+      if (!name) return;
+
+      const spots = getSpotsForGroup(selectedGroup);
+      const next = [...spots, { name, location }];
+      setSpotsForGroup(selectedGroup, next);
+
+      newSpotNameInput.value = '';
+      newSpotLocationInput.value = '';
+      applyGroupContext();
+    });
+
+    newSpotNameInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') addSpotBtn.click();
+    });
+  }
+
+  if (resetSpotsBtn) {
+    resetSpotsBtn.addEventListener('click', () => {
+      resetSpotsForGroup(selectedGroup);
+      applyGroupContext();
+    });
+  }
+}
+
 // Initialize app
 async function init() {
   // Size & build the wheel dynamically
-  sizeWheelToContainer();
-  buildWheel();
+  setupGroupUi();
 
   let resizeTimer;
   window.addEventListener('resize', () => {
@@ -425,30 +742,7 @@ async function init() {
   setupDragGesture();
   console.log('Spin button and drag gesture attached');
 
-  try {
-    if (!supabaseClient) {
-      console.log('Supabase not available, running in offline mode');
-      return;
-    }
-
-    const history = await loadHistory();
-    renderHistory(history);
-
-    yesterdaysPick = getYesterdaysPick(history);
-
-    const alreadySpun = await checkTodaysPick(history);
-    if (alreadySpun) {
-      disableWheel();
-      wheel.style.cursor = 'not-allowed';
-      // Show where the wheel landed
-      const spotIndex = LUNCH_SPOTS.findIndex((s) => s.name === todaysPick);
-      const segmentAngle = 360 / LUNCH_SPOTS.length;
-      wheel.style.transition = 'none';
-      wheel.style.transform = `rotate(${-(spotIndex * segmentAngle)}deg)`;
-    }
-  } catch (err) {
-    console.error('Failed to initialize:', err);
-  }
+  await applyGroupContext();
 }
 
 init();

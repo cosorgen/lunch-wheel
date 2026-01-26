@@ -5,7 +5,8 @@ A fun "wheel of fortune" style web app to decide where your team eats lunch. Spi
 ## Features
 
 - 🎡 Interactive spinning wheel animation
-- 📅 One spin per day (prevents re-spins)
+- 👥 Create/select a group (each group gets its own daily spin)
+- 📅 One spin per day per group (prevents re-spins)
 - 🔄 Avoids yesterday's lunch spot
 - 📜 Shows recent pick history
 - 🌙 Automatic light/dark mode support
@@ -28,13 +29,18 @@ In your Supabase dashboard, go to **SQL Editor** and run:
 -- Create the lunch picks table
 CREATE TABLE lunch_picks (
     id BIGSERIAL PRIMARY KEY,
-    pick_date DATE NOT NULL UNIQUE,
+    group_name TEXT NOT NULL,
+    pick_date DATE NOT NULL,
     spot_name TEXT NOT NULL,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- One pick per day, per group
+CREATE UNIQUE INDEX lunch_picks_group_date_unique
+  ON lunch_picks (group_name, pick_date);
+
 -- Create index for faster date lookups
-CREATE INDEX idx_lunch_picks_date ON lunch_picks(pick_date DESC);
+CREATE INDEX idx_lunch_picks_group_date ON lunch_picks(group_name, pick_date DESC);
 
 -- Enable Row Level Security (optional but recommended)
 ALTER TABLE lunch_picks ENABLE ROW LEVEL SECURITY;
@@ -44,6 +50,25 @@ CREATE POLICY "Allow all operations" ON lunch_picks
     FOR ALL
     USING (true)
     WITH CHECK (true);
+```
+
+If you already created the older single-group table, migrate it like this:
+
+```sql
+ALTER TABLE lunch_picks ADD COLUMN IF NOT EXISTS group_name TEXT;
+UPDATE lunch_picks SET group_name = 'Default' WHERE group_name IS NULL;
+ALTER TABLE lunch_picks ALTER COLUMN group_name SET NOT NULL;
+
+-- Drop the old unique constraint on pick_date if it exists
+DROP INDEX IF EXISTS idx_lunch_picks_date;
+DROP INDEX IF EXISTS lunch_picks_pick_date_key;
+
+-- Add the per-group unique index
+CREATE UNIQUE INDEX IF NOT EXISTS lunch_picks_group_date_unique
+  ON lunch_picks (group_name, pick_date);
+
+CREATE INDEX IF NOT EXISTS idx_lunch_picks_group_date
+  ON lunch_picks (group_name, pick_date DESC);
 ```
 
 ### 3. Configure the App
@@ -57,16 +82,17 @@ const SUPABASE_ANON_KEY = 'your-anon-key';
 
 ### 4. Customize Lunch Spots
 
-Edit the `LUNCH_SPOTS` array in `app.js` to include your campus lunch options:
+Edit the `DEFAULT_LUNCH_SPOTS` array in `app.js` to include your campus lunch options:
 
 ```javascript
-const LUNCH_SPOTS = [
-  'The Grill',
-  'Pasta Place',
-  'Sushi Bar',
-  // Add your spots here!
+const DEFAULT_LUNCH_SPOTS = [
+  { name: 'The Grill', location: 'Food Hall' },
+  { name: 'Pasta Place', location: 'Building 2' },
+  { name: 'Sushi Bar', location: 'Food Hall' },
 ];
 ```
+
+Each group can also manage its own spots in-app via the "Groups & Spots" button (stored in the browser’s local storage).
 
 ### 5. Run the App
 
@@ -87,7 +113,7 @@ Then open `http://localhost:8000` in your browser.
 
 ## How It Works
 
-1. **Daily Spin**: Each day, one person can spin the wheel to pick today's lunch spot
+1. **Group Daily Spin**: Each group gets one spin per day
 2. **No Repeats**: Yesterday's pick is excluded from the wheel
 3. **Persistence**: All picks are stored in Supabase, so everyone sees the same result
 4. **History**: View the past week's picks at the bottom of the page
