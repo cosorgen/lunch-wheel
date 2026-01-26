@@ -87,109 +87,232 @@ let supabaseGroupModeAvailable = true;
 // Get today's date as YYYY-MM-DD
 const getToday = () => new Date().toISOString().split('T')[0];
 
-const STORAGE_PREFIX = 'lunchWheel.';
-const storageKey = (suffix) => `${STORAGE_PREFIX}${suffix}`;
+const DEFAULT_GROUP_NAME = 'Edge design';
 
 function safeTrim(str) {
   return (str ?? '').toString().trim();
-}
-
-function loadJSON(key, fallback) {
-  try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return fallback;
-    return JSON.parse(raw);
-  } catch {
-    return fallback;
-  }
-}
-
-function saveJSON(key, value) {
-  localStorage.setItem(key, JSON.stringify(value));
 }
 
 function normalizeGroupName(name) {
   return safeTrim(name).replace(/\s+/g, ' ');
 }
 
-function getGroups() {
-  const groups = loadJSON(storageKey('groups'), ['Edge design']);
-  const normalized = [
-    ...new Set(groups.map(normalizeGroupName).filter(Boolean)),
-  ];
-  return normalized.length ? normalized : ['Edge design'];
-}
-
-function persistGroups(groups) {
-  saveJSON(storageKey('groups'), groups);
-}
-
-function getSelectedGroup() {
-  const fromStorage = normalizeGroupName(
-    loadJSON(storageKey('selectedGroup'), ''),
-  );
-  const groups = getGroups();
-  if (fromStorage && groups.includes(fromStorage)) return fromStorage;
-  return groups[0];
-}
-
-function setSelectedGroup(groupName) {
-  selectedGroup = groupName;
-  saveJSON(storageKey('selectedGroup'), groupName);
-  if (currentGroupLabel) currentGroupLabel.textContent = groupName;
-}
-
-function getGroupSpotsKey(groupName) {
-  return storageKey(`spots.${groupName}`);
-}
-
-function getGroupHistoryKey(groupName) {
-  return storageKey(`history.${groupName}`);
-}
-
-function getSpotsForGroup(groupName) {
-  const custom = loadJSON(getGroupSpotsKey(groupName), null);
-  if (Array.isArray(custom) && custom.length) {
-    return custom
-      .map((s) => ({
-        name: safeTrim(s?.name),
-        location: safeTrim(s?.location),
-      }))
-      .filter((s) => s.name);
+function getInitialGroupFromUrl() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    return normalizeGroupName(params.get('group'));
+  } catch {
+    return '';
   }
-  return DEFAULT_LUNCH_SPOTS;
 }
 
-function setSpotsForGroup(groupName, spots) {
+function setSelectedGroup(groupName, { updateUrl = true } = {}) {
+  selectedGroup = groupName;
+  if (currentGroupLabel) currentGroupLabel.textContent = groupName;
+
+  if (updateUrl) {
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set('group', groupName);
+      window.history.replaceState({}, '', url.toString());
+    } catch {
+      // best effort
+    }
+  }
+}
+
+function isMissingTableError(error, tableName) {
+  const msg = `${error?.message || ''} ${error?.details || ''}`.toLowerCase();
+  return (
+    msg.includes('does not exist') &&
+    msg.includes((tableName || '').toLowerCase())
+  );
+}
+
+async function getGroupsFromSupabase() {
+  if (!supabaseClient) return [DEFAULT_GROUP_NAME];
+
+  // Preferred: explicit groups table
+  const { data: groupsData, error: groupsError } = await supabaseClient
+    .from('lunch_groups')
+    .select('group_name')
+    .order('group_name', { ascending: true });
+
+  if (!groupsError) {
+    const fromGroupsTable = (groupsData || [])
+      .map((row) => normalizeGroupName(row?.group_name))
+      .filter(Boolean);
+    const unique = [...new Set(fromGroupsTable)];
+    if (unique.length) return unique;
+
+    // Seed a default group if table exists but empty
+    await ensureGroupExists(DEFAULT_GROUP_NAME);
+    return [DEFAULT_GROUP_NAME];
+  }
+
+  // Fallback: infer groups from picks table (still Supabase-only)
+  if (!isMissingTableError(groupsError, 'lunch_groups')) {
+    console.warn(
+      'Failed to read lunch_groups; falling back to lunch_picks:',
+      groupsError,
+    );
+  }
+
+  if (!supabaseGroupModeAvailable) {
+    return [DEFAULT_GROUP_NAME];
+  }
+
+  const { data: picksData, error: picksError } = await supabaseClient
+    .from('lunch_picks')
+    .select('group_name')
+    .limit(1000);
+
+  if (picksError) {
+    if (isMissingColumnError(picksError, 'group_name')) {
+      supabaseGroupModeAvailable = false;
+      return [DEFAULT_GROUP_NAME];
+    }
+    console.error('Failed to infer groups from lunch_picks:', picksError);
+    return [DEFAULT_GROUP_NAME];
+  }
+
+  const unique = [
+    ...new Set(
+      (picksData || [])
+        .map((row) => normalizeGroupName(row?.group_name))
+        .filter(Boolean),
+    ),
+  ].sort((a, b) => a.localeCompare(b));
+
+  return unique.length ? unique : [DEFAULT_GROUP_NAME];
+}
+
+async function ensureGroupExists(groupName) {
+  if (!supabaseClient) return;
+  const normalized = normalizeGroupName(groupName);
+  if (!normalized) return;
+
+  const { error } = await supabaseClient
+    .from('lunch_groups')
+    .upsert({ group_name: normalized }, { onConflict: 'group_name' });
+
+  if (error && !isMissingTableError(error, 'lunch_groups')) {
+    console.warn('Failed to upsert group into lunch_groups:', error);
+  }
+}
+
+async function getSpotsFromSupabase(groupName) {
+  if (!supabaseClient) return DEFAULT_LUNCH_SPOTS.map((s) => ({ ...s }));
+
+  const normalized = normalizeGroupName(groupName);
+  if (!normalized) return DEFAULT_LUNCH_SPOTS.map((s) => ({ ...s }));
+
+  const { data, error } = await supabaseClient
+    .from('lunch_spots')
+    .select('id, spot_name, location')
+    .eq('group_name', normalized)
+    .order('spot_name', { ascending: true });
+
+  if (error) {
+    if (isMissingTableError(error, 'lunch_spots')) {
+      console.warn(
+        'Missing lunch_spots table. Create it per README to persist spots in Supabase.',
+      );
+      return DEFAULT_LUNCH_SPOTS.map((s) => ({ ...s }));
+    }
+    console.error('Error loading spots:', error);
+    return DEFAULT_LUNCH_SPOTS.map((s) => ({ ...s }));
+  }
+
+  const spots = (data || [])
+    .map((row) => ({
+      id: row.id,
+      name: safeTrim(row.spot_name),
+      location: safeTrim(row.location),
+    }))
+    .filter((s) => s.name);
+
+  return spots.length ? spots : DEFAULT_LUNCH_SPOTS.map((s) => ({ ...s }));
+}
+
+async function replaceGroupSpotsInSupabase(groupName, spots) {
+  if (!supabaseClient) return;
+  const normalized = normalizeGroupName(groupName);
+  if (!normalized) return;
+
+  const { error: deleteError } = await supabaseClient
+    .from('lunch_spots')
+    .delete()
+    .eq('group_name', normalized);
+
+  if (deleteError) {
+    if (isMissingTableError(deleteError, 'lunch_spots')) {
+      console.warn(
+        'Missing lunch_spots table. Create it per README to persist spots in Supabase.',
+      );
+      return;
+    }
+    throw deleteError;
+  }
+
   const cleaned = (spots || [])
     .map((s) => ({ name: safeTrim(s?.name), location: safeTrim(s?.location) }))
     .filter((s) => s.name);
-  saveJSON(getGroupSpotsKey(groupName), cleaned);
+
+  if (!cleaned.length) return;
+
+  const { error: insertError } = await supabaseClient
+    .from('lunch_spots')
+    .insert(
+      cleaned.map((s) => ({
+        group_name: normalized,
+        spot_name: s.name,
+        location: s.location || null,
+      })),
+    );
+
+  if (insertError) throw insertError;
 }
 
-function resetSpotsForGroup(groupName) {
-  localStorage.removeItem(getGroupSpotsKey(groupName));
+async function addSpotToSupabase(groupName, spot) {
+  if (!supabaseClient) return;
+  const normalized = normalizeGroupName(groupName);
+  const name = safeTrim(spot?.name);
+  const location = safeTrim(spot?.location);
+  if (!normalized || !name) return;
+
+  const { error } = await supabaseClient.from('lunch_spots').insert({
+    group_name: normalized,
+    spot_name: name,
+    location: location || null,
+  });
+
+  if (error) {
+    if (isMissingTableError(error, 'lunch_spots')) {
+      console.warn(
+        'Missing lunch_spots table. Create it per README to persist spots in Supabase.',
+      );
+      return;
+    }
+    console.error('Failed to add spot:', error);
+  }
 }
 
-function readLocalHistory(groupName) {
-  const history = loadJSON(getGroupHistoryKey(groupName), []);
-  if (!Array.isArray(history)) return [];
-  return history
-    .filter((h) => h && h.pick_date && h.spot_name)
-    .sort((a, b) =>
-      a.pick_date < b.pick_date ? 1 : a.pick_date > b.pick_date ? -1 : 0,
-    )
-    .slice(0, 7);
-}
-
-function writeLocalPick(groupName, pickDate, spotName) {
-  const history = loadJSON(getGroupHistoryKey(groupName), []);
-  const next = Array.isArray(history) ? [...history] : [];
-  const existingIndex = next.findIndex((h) => h.pick_date === pickDate);
-  const entry = { pick_date: pickDate, spot_name: spotName };
-  if (existingIndex >= 0) next[existingIndex] = entry;
-  else next.push(entry);
-  saveJSON(getGroupHistoryKey(groupName), next);
+async function deleteSpotFromSupabase(spotId) {
+  if (!supabaseClient || !spotId) return;
+  const { error } = await supabaseClient
+    .from('lunch_spots')
+    .delete()
+    .eq('id', spotId);
+  if (error) {
+    if (isMissingTableError(error, 'lunch_spots')) {
+      console.warn(
+        'Missing lunch_spots table. Create it per README to persist spots in Supabase.',
+      );
+      return;
+    }
+    console.error('Failed to delete spot:', error);
+  }
 }
 
 function isMissingColumnError(error, columnName) {
@@ -331,8 +454,19 @@ function spinToSpot(spot) {
 
 // Load history (Supabase if available + schema supports groups, else local)
 async function loadHistory(groupName) {
-  if (!supabaseClient || !supabaseGroupModeAvailable) {
-    return readLocalHistory(groupName);
+  if (!supabaseClient) return [];
+
+  if (!supabaseGroupModeAvailable) {
+    const { data, error } = await supabaseClient
+      .from('lunch_picks')
+      .select('*')
+      .order('pick_date', { ascending: false })
+      .limit(7);
+    if (error) {
+      console.error('Error loading history:', error);
+      return [];
+    }
+    return data || [];
   }
 
   const { data, error } = await supabaseClient
@@ -345,14 +479,14 @@ async function loadHistory(groupName) {
   if (error) {
     if (isMissingColumnError(error, 'group_name')) {
       console.warn(
-        'Supabase table is missing group_name. Falling back to local storage. See README for migration SQL.',
+        'Supabase table is missing group_name. Switching to legacy single-group mode. See README for migration SQL.',
       );
       supabaseGroupModeAvailable = false;
-      return readLocalHistory(groupName);
+      return loadHistory(groupName);
     }
 
     console.error('Error loading history:', error);
-    return readLocalHistory(groupName);
+    return [];
   }
 
   return data || [];
@@ -362,29 +496,29 @@ async function loadHistory(groupName) {
 async function savePick(groupName, spotName) {
   const pickDate = getToday();
 
-  if (!supabaseClient || !supabaseGroupModeAvailable) {
-    writeLocalPick(groupName, pickDate, spotName);
-    return;
-  }
+  if (!supabaseClient) return;
 
-  const { error } = await supabaseClient.from('lunch_picks').insert({
-    group_name: groupName,
+  const payload = {
     pick_date: pickDate,
     spot_name: spotName,
-  });
+  };
+  if (supabaseGroupModeAvailable) payload.group_name = groupName;
+
+  const { error } = await supabaseClient.from('lunch_picks').insert(payload);
 
   if (error) {
-    if (isMissingColumnError(error, 'group_name')) {
+    if (
+      supabaseGroupModeAvailable &&
+      isMissingColumnError(error, 'group_name')
+    ) {
       console.warn(
-        'Supabase table is missing group_name. Falling back to local storage. See README for migration SQL.',
+        'Supabase table is missing group_name. Switching to legacy single-group mode. See README for migration SQL.',
       );
       supabaseGroupModeAvailable = false;
-      writeLocalPick(groupName, pickDate, spotName);
-      return;
+      return savePick(groupName, spotName);
     }
 
     console.error('Error saving pick:', error);
-    writeLocalPick(groupName, pickDate, spotName);
   }
 }
 
@@ -576,7 +710,7 @@ function setupDragGesture() {
 
 function renderSpotsManager() {
   if (!spotsList) return;
-  const spots = getSpotsForGroup(selectedGroup);
+  const spots = Array.isArray(activeLunchSpots) ? activeLunchSpots : [];
   spotsList.innerHTML = spots
     .map((spot, index) => {
       const location = safeTrim(spot.location);
@@ -595,23 +729,35 @@ function renderSpotsManager() {
   spotsList.querySelectorAll('button.remove-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
       const idx = Number(btn.getAttribute('data-index'));
+      const spot = spots[idx];
+      if (!spot) return;
+      if (spot.id) {
+        deleteSpotFromSupabase(spot.id).then(applyGroupContext);
+        return;
+      }
+
+      // If spots are defaults (no id), replace the full set in Supabase (if configured)
       const next = spots.filter((_, i) => i !== idx);
-      setSpotsForGroup(selectedGroup, next);
-      applyGroupContext();
+      replaceGroupSpotsInSupabase(selectedGroup, next)
+        .then(applyGroupContext)
+        .catch((err) => console.error('Failed to update spots:', err));
     });
   });
 }
 
-function rebuildGroupSelect() {
+async function rebuildGroupSelect() {
   if (!groupSelect) return;
 
-  const groups = getGroups();
+  const groups = await getGroupsFromSupabase();
   groupSelect.innerHTML = groups
     .map((g) => `<option value="${g}">${g}</option>`)
     .join('');
 
-  const current = getSelectedGroup();
-  groupSelect.value = current;
+  if (selectedGroup && groups.includes(selectedGroup)) {
+    groupSelect.value = selectedGroup;
+  } else {
+    groupSelect.value = groups[0] || DEFAULT_GROUP_NAME;
+  }
 }
 
 async function applyGroupContext() {
@@ -621,10 +767,7 @@ async function applyGroupContext() {
   yesterdaysPick = null;
   currentRotation = 0;
 
-  activeLunchSpots = getSpotsForGroup(selectedGroup);
-  if (!activeLunchSpots.length) {
-    activeLunchSpots = DEFAULT_LUNCH_SPOTS;
-  }
+  activeLunchSpots = await getSpotsFromSupabase(selectedGroup);
   sizeWheelToContainer();
   buildWheel();
   renderSpotsManager();
@@ -657,17 +800,26 @@ async function applyGroupContext() {
   }
 }
 
-function setupGroupUi() {
-  rebuildGroupSelect();
+async function setupGroupUi() {
+  const groups = await getGroupsFromSupabase();
+  await rebuildGroupSelect();
 
-  const initial = getSelectedGroup();
-  setSelectedGroup(initial);
+  const fromUrl = getInitialGroupFromUrl();
+  const initial =
+    fromUrl && groups.includes(fromUrl)
+      ? fromUrl
+      : groups[0] || DEFAULT_GROUP_NAME;
+  setSelectedGroup(initial, { updateUrl: true });
+
+  // Keep group list in Supabase if table exists
+  await ensureGroupExists(initial);
 
   if (groupSelect) {
     groupSelect.addEventListener('change', async () => {
       const next = normalizeGroupName(groupSelect.value);
       if (!next) return;
-      setSelectedGroup(next);
+      setSelectedGroup(next, { updateUrl: true });
+      await ensureGroupExists(next);
       await applyGroupContext();
     });
   }
@@ -677,16 +829,11 @@ function setupGroupUi() {
       const name = normalizeGroupName(newGroupNameInput.value);
       if (!name) return;
 
-      const groups = getGroups();
-      if (!groups.includes(name)) {
-        groups.push(name);
-        persistGroups(groups);
-      }
-
-      rebuildGroupSelect();
-      groupSelect.value = name;
+      await ensureGroupExists(name);
+      await rebuildGroupSelect();
+      if (groupSelect) groupSelect.value = name;
       newGroupNameInput.value = '';
-      setSelectedGroup(name);
+      setSelectedGroup(name, { updateUrl: true });
       await applyGroupContext();
     });
 
@@ -701,13 +848,12 @@ function setupGroupUi() {
       const location = safeTrim(newSpotLocationInput.value);
       if (!name) return;
 
-      const spots = getSpotsForGroup(selectedGroup);
-      const next = [...spots, { name, location }];
-      setSpotsForGroup(selectedGroup, next);
+      addSpotToSupabase(selectedGroup, { name, location }).then(
+        applyGroupContext,
+      );
 
       newSpotNameInput.value = '';
       newSpotLocationInput.value = '';
-      applyGroupContext();
     });
 
     newSpotNameInput.addEventListener('keydown', (e) => {
@@ -717,8 +863,9 @@ function setupGroupUi() {
 
   if (resetSpotsBtn) {
     resetSpotsBtn.addEventListener('click', () => {
-      resetSpotsForGroup(selectedGroup);
-      applyGroupContext();
+      replaceGroupSpotsInSupabase(selectedGroup, DEFAULT_LUNCH_SPOTS)
+        .then(applyGroupContext)
+        .catch((err) => console.error('Failed to reset spots:', err));
     });
   }
 }
@@ -726,7 +873,11 @@ function setupGroupUi() {
 // Initialize app
 async function init() {
   // Size & build the wheel dynamically
-  setupGroupUi();
+  if (!supabaseClient) {
+    console.error('Supabase client not available; cannot persist state.');
+  }
+
+  await setupGroupUi();
 
   let resizeTimer;
   window.addEventListener('resize', () => {
