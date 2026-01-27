@@ -68,9 +68,10 @@ function getInitialGroupFromUrl() {
   }
 }
 
-function setSelectedGroup(groupName, { updateUrl = true } = {}) {
+async function setSelectedGroup(groupName, { updateUrl = true } = {}) {
   selectedGroup = groupName;
   if (currentGroupLabel) currentGroupLabel.textContent = groupName;
+  await rebuildGroupSelect();
 
   if (updateUrl) {
     try {
@@ -277,6 +278,34 @@ async function deleteSpotFromSupabase(spotId) {
   }
 }
 
+function sectorClipPolygon({
+  n,
+  arcSteps = 48,
+  orientation = 0 /* radians, 0 = 3 o'clock */,
+}) {
+  const theta = (2 * Math.PI) / n; // full slice angle
+  const a = theta / 2; // half-angle
+  const start = orientation - a;
+  const end = orientation + a;
+
+  // scale: full-size div: center (50,50), radius = 50
+  const cx = 50,
+    cy = 50,
+    r = 50;
+
+  const pts = [];
+  pts.push(`${cx}% ${cy}%`); // center first
+
+  for (let i = 0; i <= arcSteps; i++) {
+    const t = start + (i / arcSteps) * (end - start);
+    const x = cx + r * Math.cos(t);
+    const y = cy - r * Math.sin(t); // CSS y down => subtract
+    pts.push(`${x.toFixed(2)}% ${y.toFixed(2)}%`);
+  }
+
+  return `polygon(${pts.join(', ')})`;
+}
+
 function isMissingColumnError(error, columnName) {
   const msg = `${error?.message || ''} ${error?.details || ''}`.toLowerCase();
   return msg.includes('column') && msg.includes(columnName.toLowerCase());
@@ -286,54 +315,21 @@ function isMissingColumnError(error, columnName) {
 function buildWheel() {
   const numSegments = activeLunchSpots.length;
 
-  // // Color palette - will cycle through for any number of segments
-  // const colors = [
-  //   '#e63946',
-  //   '#f4a261',
-  //   '#2a9d8f',
-  //   '#264653',
-  //   '#e9c46a',
-  //   '#9b59b6',
-  //   '#3498db',
-  //   '#1abc9c',
-  //   '#e91e63',
-  //   '#00bcd4',
-  //   '#ff9800',
-  //   '#8bc34a',
-  //   '#ff5722',
-  //   '#607d8b',
-  //   '#673ab7',
-  //   '#009688',
-  //   '#ffc107',
-  //   '#795548',
-  //   '#f44336',
-  //   '#4caf50',
-  // ];
-
   // // Light colors that need dark text
   // const lightColors = ['#e9c46a', '#f4a261', '#ffc107', '#8bc34a', '#4caf50'];
 
-  const a = Math.PI / numSegments;
-  const p = (ang) => {
-    const x = 50 + 50 * Math.cos(ang);
-    const y = 50 - 50 * Math.sin(ang);
-    return `${x}% ${y}%`;
-  };
-  const clipPath = `polygon(
-    50% 50%,
-    ${p(-a)},
-    ${p(+a)}
-  )`;
-
   document.body.style.setProperty('--num-segments', numSegments);
-  document.body.style.setProperty('--segment-clip-path', clipPath);
+  document.body.style.setProperty(
+    '--segment-clip-path',
+    sectorClipPolygon({ n: numSegments }),
+  );
 
   // Add segments
   let labelsHTML = '';
   for (let i = 0; i < numSegments; i++) {
     const spot = activeLunchSpots[i];
     const tooltip = `${spot.name} — ${spot.location}`;
-    labelsHTML += `<div class="segment" style="--i: ${i};" title="${tooltip}"><span>${spot.name}</span></div>`;
+    labelsHTML += `<div class="segment ${numSegments === 1 ? 'only' : ''}" style="--i: ${i};" title="${tooltip}"><span>${spot.name}</span></div>`;
   }
   wheel.innerHTML = labelsHTML;
 }
@@ -723,7 +719,7 @@ async function setupGroupUi() {
     fromUrl && groups.includes(fromUrl)
       ? fromUrl
       : groups[0] || DEFAULT_GROUP_NAME;
-  setSelectedGroup(initial, { updateUrl: true });
+  await setSelectedGroup(initial, { updateUrl: true });
 
   // Keep group list in Supabase if table exists
   await ensureGroupExists(initial);
@@ -732,7 +728,7 @@ async function setupGroupUi() {
     groupSelect.addEventListener('change', async () => {
       const next = normalizeGroupName(groupSelect.value);
       if (!next) return;
-      setSelectedGroup(next, { updateUrl: true });
+      await setSelectedGroup(next, { updateUrl: true });
       await ensureGroupExists(next);
       await applyGroupContext();
     });
@@ -747,7 +743,7 @@ async function setupGroupUi() {
       await rebuildGroupSelect();
       if (groupSelect) groupSelect.value = name;
       newGroupNameInput.value = '';
-      setSelectedGroup(name, { updateUrl: true });
+      await setSelectedGroup(name, { updateUrl: true });
       await applyGroupContext();
     });
 

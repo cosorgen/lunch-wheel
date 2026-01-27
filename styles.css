@@ -58,6 +58,7 @@ header {
     background: var(--bg-secondary);
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
+    gap: 2rem;
 }
 
 .header-left {
@@ -70,6 +71,9 @@ header {
 header h1 {
     font-size: 1.25rem;
     margin: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .group-controls {
@@ -87,6 +91,9 @@ header h1 {
     background: var(--bg-secondary);
     color: var(--text-primary);
     font-weight: 600;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
 }
 
 .secondary-btn {
@@ -99,6 +106,9 @@ header h1 {
     border-radius: 999px;
     cursor: pointer;
     transition: all 0.2s ease;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
 }
 
 .secondary-btn:hover {
@@ -115,6 +125,9 @@ header h1 {
     border-radius: 999px;
     cursor: pointer;
     transition: all 0.2s ease;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
 }
 
 .danger-btn:hover {
@@ -176,9 +189,9 @@ header h1 {
 
 .pointer {
     position: absolute;
-    top: calc(50% - (var(--wheel-size, 92vmin) / 2) - 18px);
-    left: 50%;
-    transform: translateX(-50%);
+    right: calc(50% - (var(--wheel-size, 92vmin) / 2) - 18px);
+    top: 50%;
+    transform: translateY(-50%) rotate(90deg);
     font-size: clamp(2rem, 4vw, 3rem);
     color: var(--accent);
     z-index: 10;
@@ -186,23 +199,106 @@ header h1 {
 }
 
 .segment {
-    background-color: red;
     position: absolute;
     inset: -10px;
     transform-origin: center center;
-    transform: translate(0%, 0%) rotate(calc(360deg / var(--num-segments) * sibling-index()));
+    --rot-step: calc(360deg / var(--num-segments));
+    transform: translate(0%, 0%) rotate(calc(var(--rot-step) * sibling-index() - var(--rot-step)));
     pointer-events: auto;
     cursor: default;
     overflow: hidden;
     display: flex;
     align-items: center;
     justify-content: flex-end;
-    padding-inline-end: 16px;
+    padding-inline-end: 5%;
     clip-path: var(--segment-clip-path);
 }
 
-.segment:nth-child(odd) {
-    background-color: blue;
+.segment.only {
+    clip-path: none;
+    transform: none;
+}
+
+.segment:nth-of-type(10n) {
+    background-color: #fbf8cc;
+}
+
+.segment:nth-of-type(10n + 1) {
+    background-color: #fde4cf;
+}
+
+.segment:nth-of-type(10n + 2) {
+    background-color: #ffcfd2;
+}
+
+.segment:nth-of-type(10n + 3) {
+    background-color: #f1c0e8;
+}
+
+.segment:nth-of-type(10n + 4) {
+    background-color: #cfbaf0;
+}
+
+.segment:nth-of-type(10n + 5) {
+    background-color: #a3c4f3;
+}
+
+.segment:nth-of-type(10n + 6) {
+    background-color: #90dbf4;
+}
+
+.segment:nth-of-type(10n + 7) {
+    background-color: #8eecf5;
+}
+
+.segment:nth-of-type(10n + 8) {
+    background-color: #98f5e1;
+}
+
+.segment:nth-of-type(10n + 9) {
+    background-color: #b9fbc0;
+}
+
+@media (prefers-color-scheme: dark) {
+    .segment:nth-of-type(10n) {
+        background-color: #001219;
+    }
+
+    .segment:nth-of-type(10n + 1) {
+        background-color: #005f73;
+    }
+
+    .segment:nth-of-type(10n + 2) {
+        background-color: #0a9396;
+    }
+
+    .segment:nth-of-type(10n + 3) {
+        background-color: #94d2bd;
+    }
+
+    .segment:nth-of-type(10n + 4) {
+        background-color: #e9d8a6;
+    }
+
+    .segment:nth-of-type(10n + 5) {
+        background-color: #ee9b00;
+    }
+
+    .segment:nth-of-type(10n + 6) {
+        background-color: #ca6702;
+    }
+
+    .segment:nth-of-type(10n + 7) {
+        background-color: #bb3e03;
+    }
+
+    .segment:nth-of-type(10n + 8) {
+        background-color: #ae2012;
+    }
+
+    .segment:nth-of-type(10n + 9) {
+        background-color: #9b2226;
+    }
 }
 
 .segment span {
@@ -211,6 +307,7 @@ header h1 {
     text-align: right;
     overflow: hidden;
     text-overflow: ellipsis;
+    color: var(--text-primary);
 }
 
 /* Center circle */
@@ -244,6 +341,9 @@ header h1 {
     cursor: pointer;
     transition: all 0.2s ease;
     box-shadow: 0 2px 8px var(--shadow);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .spin-btn:hover:not(:disabled) {
