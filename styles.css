@@ -36,7 +36,7 @@
 
 html,
 body {
-    height: 100%;
+    height: 100vh;
     overflow: hidden;
 }
 
@@ -140,18 +140,32 @@ header h1 {
     align-items: center;
     justify-content: center;
     position: relative;
-    padding: clamp(12px, 2vw, 24px);
+    padding: 24px;
+}
+
+@media screen and (aspect-ratio >=1) {
+    .wheel {
+        height: 100%;
+        width: auto;
+    }
+}
+
+@media screen and (aspect-ratio < 1) {
+    .wheel {
+        width: 100%;
+        height: auto;
+    }
 }
 
 .wheel {
-    width: min(92vmin, 900px);
-    height: min(92vmin, 900px);
+    aspect-ratio: 1;
     border-radius: 50%;
     border: 4px solid var(--wheel-border);
     position: relative;
     box-shadow: 0 8px 32px var(--shadow);
     transition: transform 4s cubic-bezier(0.17, 0.67, 0.12, 0.99);
     cursor: grab;
+    overflow: hidden;
 }
 
 .wheel.disabled {
@@ -171,28 +185,30 @@ header h1 {
     filter: drop-shadow(0 2px 4px var(--shadow));
 }
 
-.segment-label {
+.segment {
+    background-color: red;
     position: absolute;
-    left: 50%;
-    top: 50%;
-    width: 0;
-    height: 0;
-    transform: translate(-50%, -50%) rotate(var(--label-angle, 0deg)) translateX(var(--label-radius, calc(var(--wheel-size, 600px) * 0.35)));
-    transform-origin: center;
-    font-weight: 700;
+    inset: -10px;
+    transform-origin: center center;
+    transform: translate(0%, 0%) rotate(calc(360deg / var(--num-segments) * sibling-index()));
     pointer-events: auto;
     cursor: default;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding-inline-end: 16px;
+    clip-path: var(--segment-clip-path);
 }
 
-.segment-label span {
-    position: absolute;
-    left: 0;
-    top: 0;
-    display: block;
-    transform: translate(-50%, -50%);
+.segment:nth-child(odd) {
+    background-color: blue;
+}
+
+.segment span {
+    font-weight: 700;
     white-space: nowrap;
-    text-align: center;
-    max-width: min(55vw, 520px);
+    text-align: right;
     overflow: hidden;
     text-overflow: ellipsis;
 }
