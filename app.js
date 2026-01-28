@@ -6,6 +6,42 @@ const SUPABASE_URL = 'https://pyplwpohrszraafvfobf.supabase.co';
 const SUPABASE_ANON_KEY =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB5cGx3cG9ocnN6cmFhZnZmb2JmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTU3MTE2NjksImV4cCI6MjA3MTI4NzY2OX0.VKZ8OZj2uuFgpnpeBCld_zijeCZw3OQE-ERUrflBrt0';
 
+const DEFAULT_LUNCH_SPOTS = [
+  { name: 'Himalaya', location: 'Food Hall 4' },
+  { name: 'Global', location: 'Food Hall 4' },
+  { name: 'Forage', location: 'Food Hall 4' },
+  { name: 'Roost', location: 'Food Hall 4' },
+  { name: 'Cuatro', location: 'Food Hall 4' },
+  { name: 'Parlor', location: 'Food Hall 4' },
+  { name: 'Delicatessen', location: 'Food Hall 4' },
+  { name: 'Eat Local (4)', location: 'Food Hall 4' },
+  { name: "Jack's BBQ", location: 'Food Hall 4' },
+  { name: "Joe's Burgers", location: 'Food Hall 4' },
+  { name: 'Just Poké', location: 'Food Hall 4' },
+  { name: 'Paparepas', location: 'Food Hall 4' },
+  { name: 'MiLá', location: 'Food Hall 4' },
+  { name: 'Craft75', location: 'Food Hall 6' },
+  { name: 'Pranzetto', location: 'Food Hall 6' },
+  { name: 'Eat Local (6)', location: 'Food Hall 6' },
+  { name: 'Grilled', location: 'Food Hall 6' },
+  { name: 'Mediterranean', location: 'Food Hall 6' },
+  { name: 'Street Food', location: 'Food Hall 6' },
+  { name: 'World Flavors', location: 'Food Hall 6' },
+  { name: 'Sprout', location: 'Food Hall 6' },
+  { name: 'OmaBap', location: 'Food Hall 6' },
+  { name: 'Flora', location: 'Food Hall 6' },
+  { name: 'Cone & Steiner', location: 'Building 8' },
+  { name: 'Diner', location: 'Food Hall 9' },
+  { name: 'Soul Pie', location: 'Food Hall 9' },
+  { name: 'Internationalist', location: 'Food Hall 9' },
+  { name: 'PNW', location: 'Food Hall 9' },
+  { name: 'Garden', location: 'Food Hall 9' },
+  { name: 'Sea', location: 'Food Hall 9' },
+  { name: 'Pacific Rim', location: 'Food Hall 9' },
+  { name: 'Leaf + Land', location: 'Food Hall 9' },
+  { name: 'Big Chicken', location: 'Food Hall 9' },
+];
+
 // ============================================
 // APP CODE
 // ============================================
