@@ -748,6 +748,8 @@ async function applyGroupContext() {
         const segmentAngle = 360 / activeLunchSpots.length;
         wheel.style.transition = 'none';
         wheel.style.transform = `rotate(${-(spotIndex * segmentAngle)}deg)`;
+        // Show the result overlay for today's pick
+        showResult(activeLunchSpots[spotIndex]);
       }
     } else {
       enableWheel();
