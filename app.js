@@ -745,11 +745,10 @@ async function applyGroupContext() {
         (s) => s.name === todaysPick,
       );
       if (spotIndex >= 0) {
-        const segmentAngle = 360 / activeLunchSpots.length;
-        wheel.style.transition = 'none';
-        wheel.style.transform = `rotate(${-(spotIndex * segmentAngle)}deg)`;
-        // Show the result overlay for today's pick
-        showResult(activeLunchSpots[spotIndex]);
+        const spot = activeLunchSpots[spotIndex];
+        // Play spin animation then show result overlay
+        await spinToSpot(spot);
+        showResult(spot);
       }
     } else {
       enableWheel();
