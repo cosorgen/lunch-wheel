@@ -200,6 +200,19 @@ async function ensureGroupExists(groupName) {
   }
 }
 
+async function seedDefaultSpotsForGroup(groupName) {
+  if (!supabaseClient) return;
+  const normalized = normalizeGroupName(groupName);
+  if (!normalized) return;
+
+  // Check if group already has spots
+  const existingSpots = await getSpotsFromSupabase(normalized);
+  if (existingSpots.length > 0) return; // Don't overwrite existing spots
+
+  // Add default spots
+  await replaceGroupSpotsInSupabase(normalized, DEFAULT_LUNCH_SPOTS);
+}
+
 async function getSpotsFromSupabase(groupName) {
   if (!supabaseClient) return [];
 
@@ -776,6 +789,7 @@ async function setupGroupUi() {
       if (!name) return;
 
       await ensureGroupExists(name);
+      await seedDefaultSpotsForGroup(name);
       await rebuildGroupSelect();
       if (groupSelect) groupSelect.value = name;
       newGroupNameInput.value = '';
@@ -809,7 +823,7 @@ async function setupGroupUi() {
 
   if (resetSpotsBtn) {
     resetSpotsBtn.addEventListener('click', () => {
-      replaceGroupSpotsInSupabase(selectedGroup, [])
+      replaceGroupSpotsInSupabase(selectedGroup, DEFAULT_LUNCH_SPOTS)
         .then(applyGroupContext)
         .catch((err) => console.error('Failed to reset spots:', err));
     });
